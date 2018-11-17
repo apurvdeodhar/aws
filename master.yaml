@@ -1,0 +1,464 @@
+#This template creates VPC Public and Private subnets with IGW attached to Pub subnet
+
+AWSTemplateFormatVersion: "2010-09-09"
+Description: VPC creation
+
+Mappings:
+  RegMap:
+    us-east-1:
+      AMI: "ami-013be31976ca2c322"
+    us-east-2:
+      AMI: "ami-0b59bfac6be064b78"
+    us-west-1:
+      AMI: "ami-01beb64058d271bc4"
+    us-west-2:
+      AMI: "ami-061e7ebbc234015fe"
+    eu-west-1:
+      AMI: "ami-0a5e707736615003c"
+    eu-west-2:
+      AMI: "ami-017b0e29fac27906b"
+    eu-west-3:
+      AMI: "ami-04992646d54c69ef4"
+    eu-central-1:
+      AMI: "ami-02ea8f348fa28c108"
+    ca-central-1:
+      AMI: "ami-05cac140c6a1fb960"
+    sa-east-1:
+      AMI: "ami-0160a8b6087883cb6"
+    ap-south-1:
+      AMI: "ami-0912f71e06545ad88"
+    ap-southeast-1:
+      AMI: "ami-085fd1bd447be68e8"
+    ap-southeast-2:
+      AMI: "ami-0b8dea0e70b969adc"
+    ap-northeast-1:
+      AMI: "ami-00f9d04b3b3092052"
+    ap-northeast-2:
+      AMI: "ami-0a10b2721688ce9d2"
+
+Parameters:
+  EBSVolSize:
+    Description: Enter EBS volume size
+    Default: "8"
+    Type: String
+  InstanceType:
+    AllowedValues:
+      - t2.micro
+      - t2.medium
+      - t2.large
+    Default: "t2.micro"
+    Description: Select the Instance Type
+    Type: String
+  keypair:
+    Description: User SSH keypair name
+    Type: AWS::EC2::KeyPair::KeyName
+  NetworkName:
+    Description: specify environment name Eg - Dev, Test, QA
+    Default: "dev"
+    Type: String
+  VpcCidrBlock:
+    Description: VpcCidrBlock range
+    Type: String
+    MinLength: '9'
+    MaxLength: '18'
+    Default: 10.0.0.0/16
+    AllowedPattern: "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x.
+  PubSubnetACidrBlockList:
+    Description: Public Subnet CidrBlock range
+    Type: String
+    MinLength: '9'
+    MaxLength: '18'
+    Default: 10.0.1.0/24
+    AllowedPattern: "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x.
+  PrivSubnetACidrBlockList:
+    Description: Private Subnet CidrBlock range
+    Type: String
+    MinLength: '9'
+    MaxLength: '18'
+    Default: 10.0.2.0/24
+    AllowedPattern: "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x.
+
+Resources:
+  Vpc:
+    Type: "AWS::EC2::VPC"   #VPC creation
+    Properties:
+      CidrBlock: !Ref VpcCidrBlock
+      EnableDnsSupport: True
+      EnableDnsHostnames: True
+      Tags:
+        - Key: Name
+          Value: !Join [ "-", [ !Ref NetworkName, vpc ] ]
+
+  InternetGateway:
+    Type: "AWS::EC2::InternetGateway" #IGW creation
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Join [ "-", [ !Ref NetworkName ,InternetGateway ] ]
+
+  InternetGatewayAttachment: #attach IGW to vpc
+    DependsOn: InternetGateway
+    Type: "AWS::EC2::VPCGatewayAttachment"
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref Vpc
+
+  PublicRouteTableA: #create public Route table A
+    DependsOn: Vpc
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Join [ "-", [ !Ref NetworkName, Public, RouteTableA ] ]
+
+  PublicSubnetA: #creating public subnet A
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      AvailabilityZone: !Join [ "", [ !Ref "AWS::Region", a ] ]
+      CidrBlock: !Ref PubSubnetACidrBlockList
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Join [ "-", [ !Ref NetworkName, public, a ] ]
+      VpcId: !Ref Vpc
+    DependsOn: Vpc
+
+  PublicSubnetARouteTableAssociation: #attach public subnet A to public route table
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref PublicRouteTableA
+      SubnetId: !Ref PublicSubnetA
+    DependsOn: PublicRouteTableA
+
+  PrivateRouteTableA: #create private Route table A
+    DependsOn: Vpc
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Join [ "-", [ !Ref NetworkName, Private, RouteTableA ] ]
+
+  PrivateSubnetA: #creating private subnet A
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      AvailabilityZone: !Join [ "", [ !Ref "AWS::Region", b ] ]
+      CidrBlock: !Ref PrivSubnetACidrBlockList
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Join [ "-", [ !Ref NetworkName, private, a ] ]
+      VpcId: !Ref Vpc
+    DependsOn: Vpc
+
+  PrivateSubnetARouteTableAssociation:   #attach private subnet A to private route table A
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableA
+      SubnetId: !Ref PrivateSubnetA
+    DependsOn: PrivateRouteTableA
+
+  InternetGatewayRouteA: #attach IGW to route table
+    DependsOn: InternetGatewayAttachment
+    Type: "AWS::EC2::Route"
+    Properties:
+      DestinationCidrBlock: "0.0.0.0/0"
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref PublicRouteTableA
+
+  NATRoute:
+    DependsOn: NatGatewayA
+    Type: "AWS::EC2::Route"
+    Properties:
+      DestinationCidrBlock: "0.0.0.0/0"
+      RouteTableId: !Ref PrivateRouteTableA
+      NatGatewayId: !Ref NatGatewayA
+
+  NatElasticIpA: #creating Elastic ip
+      Type: "AWS::EC2::EIP"
+      Properties:
+        Domain: vpc
+      #DependsOn: Vpc
+
+  NatGatewayA: #creating nat gateway
+    Type: "AWS::EC2::NatGateway"
+    Properties:
+      AllocationId:
+        Fn::GetAtt:
+          - NatElasticIpA
+          - AllocationId
+      SubnetId: !Ref PublicSubnetA
+    DependsOn:
+      - NatElasticIpA
+      - Vpc
+
+  myappInstanceA:
+    DependsOn: Vpc
+    Type: "AWS::EC2::Instance"
+    Properties:
+      # IamInstanceProfile: !Ref myappInstanceProfile
+      ImageId: !FindInMap [ RegMap, !Ref "AWS::Region", AMI ]
+        # Fn::FindInMap:
+        #   - RegionMap
+        #   - Ref: AWS::Region
+        #   - AMI
+      InstanceInitiatedShutdownBehavior: stop
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref keypair
+      BlockDeviceMappings:
+          - DeviceName: "/dev/xvda"
+            Ebs:
+              VolumeType: "gp2"
+              DeleteOnTermination: "true"
+              VolumeSize: !Ref EBSVolSize
+      Monitoring: true
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: false
+          DeleteOnTermination: true
+          DeviceIndex: 0
+          GroupSet:
+            - !Ref InstanceSecurityGroup
+          SubnetId: !Ref PrivateSubnetA
+      Tags:
+        - Key: Name
+          Value: !Join [ "-", [ !Ref NetworkName, app-serverA] ]
+      Tenancy: default
+      UserData:
+        "Fn::Base64":
+          !Sub |
+           #!/bin/bash -e
+           # Lamp Install
+           sudo yum -y update
+           sudo yum install -y httpd
+           sudo service httpd start
+           sudo chkconfig httpd on
+           sudo chmod 2775 /var/www
+           echo "Hello I am App server 1 " >> /var/www/html/index.html
+           #create user
+           sudo adduser demo-user
+           echo "demo-user:omed@usr" | sudo chpasswd
+           echo 'demo-user  ALL=(ALL) ALL' >> /etc/sudoers
+           sudo sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/g' /etc/ssh/sshd_config
+           sudo service sshd restart
+
+  myappInstanceB:
+    DependsOn: Vpc
+    Type: "AWS::EC2::Instance"
+    Properties:
+      # IamInstanceProfile: !Ref myappInstanceProfile
+      ImageId: !FindInMap [ RegMap, !Ref "AWS::Region", AMI ]
+        # Fn::FindInMap:
+        #   - RegionMap
+        #   - Ref: AWS::Region
+        #   - AMI
+      InstanceInitiatedShutdownBehavior: stop
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref keypair
+      BlockDeviceMappings:
+          - DeviceName: "/dev/xvda"
+            Ebs:
+              VolumeType: "gp2"
+              DeleteOnTermination: "true"
+              VolumeSize: !Ref EBSVolSize
+      Monitoring: true
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: false
+          DeleteOnTermination: true
+          DeviceIndex: 0
+          GroupSet:
+            - !Ref InstanceSecurityGroup
+          SubnetId: !Ref PrivateSubnetA
+      Tags:
+        - Key: Name
+          Value: !Join [ "-", [ !Ref NetworkName, app-serverB] ]
+      Tenancy: default
+      UserData:
+        "Fn::Base64":
+          !Sub |
+           #!/bin/bash -e
+           # Lamp Install
+           sudo yum -y update
+           sudo yum install -y httpd
+           sudo service httpd start
+           sudo chkconfig httpd on
+           sudo chmod 2775 /var/www
+           echo "Hello I am App server 2 " >> /var/www/html/index.html
+           #create user
+           sudo adduser demo-user
+           echo "demo-user:omed@usr" | sudo chpasswd
+           echo 'demo-user  ALL=(ALL) ALL' >> /etc/sudoers
+           sudo sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/g' /etc/ssh/sshd_config
+           sudo service sshd restart
+
+  myNATInstance:
+    DependsOn: Vpc
+    Type: "AWS::EC2::Instance"
+    Properties:
+      # IamInstanceProfile: !Ref myappInstanceProfile
+      ImageId: !FindInMap [ RegMap, !Ref "AWS::Region", AMI ]
+        # Fn::FindInMap:
+        #   - RegionMap
+        #   - Ref: AWS::Region
+        #   - AMI
+      #SourceDestCheck: false
+      InstanceInitiatedShutdownBehavior: stop
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref keypair
+      BlockDeviceMappings:
+          - DeviceName: "/dev/xvda"
+            Ebs:
+              VolumeType: "gp2"
+              DeleteOnTermination: "true"
+              VolumeSize: !Ref EBSVolSize
+      Monitoring: true
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeleteOnTermination: true
+          DeviceIndex: 0
+          GroupSet:
+            - !Ref NATInstanceSecurityGroup
+          SubnetId: !Ref PublicSubnetA
+      Tags:
+        - Key: Name
+          Value: !Join [ "-", [ !Ref NetworkName, NAT-server] ]
+      Tenancy: default
+
+  APPELB:
+    DependsOn:  #[ myappInstanceA, myappInstanceB ]
+      - myappInstanceA
+      - myappInstanceB
+    Type: "AWS::ElasticLoadBalancing::LoadBalancer"
+    Properties:
+      Instances:
+        - Ref: myappInstanceA
+        - Ref: myappInstanceB
+      ConnectionSettings:
+        IdleTimeout: 300
+      CrossZone: true
+      HealthCheck:
+        HealthyThreshold: 3
+        Interval: 10
+        Target: "HTTP:80/index.html"
+        Timeout: 5
+        UnhealthyThreshold: 3
+      LoadBalancerName: "app-ELB"
+      Listeners:
+        - InstancePort: "80"
+          InstanceProtocol: HTTP
+          LoadBalancerPort: "80"
+          Protocol: HTTP
+      Scheme: internet-facing
+      SecurityGroups:
+        - !Ref APPELBSecurityGroup
+      #AvailabilityZones:
+        #- !Join [ "", [ !Ref "AWS::Region", a ] ]
+      Subnets:
+        - !Ref PublicSubnetA
+        - !Ref PrivateSubnetA
+      Tags:
+        - Key: Name
+          Value: appELB
+
+  APPELBSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: "APP ELB"
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: "TCP"
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+  InstanceSecurityGroup: #create instance security group
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupName: "app_SG"
+      GroupDescription: "SecurityGroup for app-server"
+      SecurityGroupIngress:
+        # - IpProtocol: "TCP"
+        #   FromPort: 80
+        #   ToPort: 80
+        #   CidrIp: 0.0.0.0/0
+        - IpProtocol: "TCP"
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0 #!GetAtt myNATInstance.PublicIp #!Ref VpcCidr
+      VpcId: !Ref Vpc
+    DependsOn:
+      - Vpc
+      - myNATInstance
+
+  NATInstanceSecurityGroup: #create instance security group
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupName: "NAT_SG"
+      GroupDescription: "SecurityGroup for app-server"
+      SecurityGroupIngress:
+        - IpProtocol: "TCP"
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: "TCP"
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: "TCP"
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref Vpc
+    DependsOn: Vpc
+
+Outputs:
+  appserverA:
+    Description: app-server Instance Id
+    Value: !GetAtt myappInstanceA.PrivateIp
+
+  appserverB:
+    Description: app-server Instance Id
+    Value: !GetAtt myappInstanceB.PrivateIp
+
+  myLoadBalancer:
+    Description: The DNSName of load balancer
+    Value: !GetAtt APPELB.DNSName
+
+  myNatserver:
+    Description: The PublicIp of NAT Server
+    Value: !GetAtt myNATInstance.PublicIp
+
+  VpcId:
+    Description: VPC ID
+    Value: !Ref Vpc
+
+  VpcCidr:
+    Description: IP address range
+    Value: !Ref VpcCidrBlock
+
+  InternetGateway:
+    Description:  InternetGateway Id
+    Value: !Ref  InternetGateway
+
+  PublicRouteTableA: #export public RT id for reuse
+    Description: public route table
+    Value: !Ref PublicRouteTableA
+
+  PublicSubnetA:
+    Description: Public subnet, AZ A
+    Value: !Ref PublicSubnetA
+
+  PrivateRouteTableA: #export private RT id for reuse
+    Description: Private route table
+    Value: !Ref PrivateRouteTableA
+
+  PrivateSubnetA:
+    Description: Private subnet, AZ B
+    Value: !Ref PrivateSubnetA
+
+  PriSubnetAZ:
+    Description: Private subnet, AZ B
+    Value: !GetAtt PrivateSubnetA.AvailabilityZone
